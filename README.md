@@ -85,7 +85,7 @@ $$
 We estimate this quantity using Hutchinson-style probing. For random vectors $v_m$ with zero mean and unit covariance,
 
 $$
-\|J_k(x)\|_F^2 = \operatorname{tr}\left(J_k(x)^\top J_k(x)\right) \approx \frac{1}{M}\sum_{m=1}^{M} \|J_k(x)v_m\|_2^2.
+\|J_k(x)\|_F^2 = \mathrm{tr}\left(J_k(x)^\top J_k(x)\right) \approx \frac{1}{M}\sum_{m=1}^{M} \|J_k(x)v_m\|_2^2.
 $$
 
 This provides a scalable estimate of sensitivity without materializing the full Jacobian. In practice, the estimator is computed on a small calibration set and averaged across samples:
