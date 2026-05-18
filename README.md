@@ -1,5 +1,215 @@
+# Behavioral Sensitivity Quantization (BSQ)
+### Function-Aware Mixed-Precision Quantization via Adaptive Allocation
 
-# Behavioral Sensitivity Quantization (BSQ): Function-Aware Mixed-Precision Quantization via Adaptive Allocation
+---
+
+## Abstract
+
+Neural network quantization is often driven by parameter-space heuristics that treat magnitude or curvature as proxies for functional importance. In overparameterized models, parameter fidelity does not necessarily imply behavioral fidelity.
+
+We propose **Behavioral Sensitivity Quantization (BSQ)**, a post-training mixed-precision framework that allocates bit-widths based on empirical sensitivity measured in function space.
+
+BSQ estimates layer fragility by measuring output deviation under small parameter perturbations using Jacobian-vector products (JVPs) and stochastic trace estimation on a small calibration set.
+
+We then solve a constrained bit allocation problem:
+
+minimize expected functional distortion
+subject to total memory budget constraint.
+
+The method is lightweight, post-training, and compatible with standard quantization pipelines.
+
+---
+
+## 1. Introduction
+
+Quantization typically relies on weight magnitude, activation scale, or curvature as proxies for importance. However, in overparameterized networks, these proxies are imperfect indicators of **behavioral sensitivity**.
+
+BSQ instead asks:
+
+> how much does the output change if a specific part of the model is slightly perturbed?
+
+We assign more bits to fragile components and fewer bits to robust ones.
+
+---
+
+## 2. Problem Formulation
+
+Let a model be $f_θ(x)$, with parameters split into K units:
+
+θ = {θ₁, …, θK} where each θk has Nk parameters.
+
+We assign bit-width bk per unit.
+
+### Objective:
+
+We minimize:
+
+Expected distortion:
+Eₓ [ d(fθ(x), fθQ(x)) ]
+
+### Constraint:
+
+Total memory:
+
+Σₖ Nk · bk ≤ B_total
+
+bk ∈ {b_min, …, b_max}
+
+---
+
+## 3. Behavioral Sensitivity
+
+### 3.1 Definition
+
+Sensitivity of unit k:
+
+Sk = Eₓ,δ [ || fθ(x) − fθ+Δk(δ)(x) ||² ]
+
+Interpretation:
+
+* high Sk → fragile unit → needs more bits
+* low Sk → robust unit → can be heavily quantized
+
+---
+
+### 3.2 First-order approximation
+
+Linearizing:
+
+f(θ + δ) ≈ f(θ) + Jk(x) δ
+
+So:
+
+Sk ≈ Eₓ [ || Jk(x) δk ||² ]
+
+If δk is isotropic noise:
+
+Sk ∝ Eₓ [ || Jk(x) ||²_F ]
+
+---
+
+### 3.3 Hutchinson estimator
+
+We approximate Frobenius norm via:
+
+||Jk||²_F ≈ (1/M) Σₘ || Jk(x) v_m ||²
+
+where v_m ∈ {+1, -1} (Rademacher vectors)
+
+Final estimator:
+
+Ŝk = average over calibration samples and probes.
+
+---
+
+## 4. Bit Allocation
+
+### 4.1 Surrogate objective
+
+We model distortion:
+
+Dk(bk) ≈ Sk · 2^(-2 bk)
+
+Total objective:
+
+min Σₖ Sk · 2^(-2 bk)
+
+subject to:
+
+Σₖ Nk · bk ≤ B_total
+
+---
+
+### 4.2 Solution (continuous relaxation)
+
+Optimal allocation:
+
+bk* ∝ 0.5 · log2(Sk / Nk)
+
+Interpretation:
+
+* more sensitive per parameter → more bits
+* larger layers are penalized
+
+---
+
+### 4.3 Practical discrete assignment
+
+1. compute rk = log(Sk / Nk + ε)
+2. normalize rk
+3. map to {2, 3, 4, 8} bits
+4. adjust greedily to satisfy memory budget
+
+---
+
+## 5. Related Work
+
+Existing PTQ methods rely on:
+
+* weight magnitude (heuristic)
+* activation scale
+* Hessian curvature (expensive)
+
+BSQ differs by:
+
+* operating in function space
+* using Jacobian-based sensitivity
+* requiring no fine-tuning
+* using small calibration sets only
+
+---
+
+## 6. Proposed Evaluation Protocol
+
+To validate BSQ, we propose:
+
+* Vision: ResNet, ViT
+* Language: LLaMA-style decoder models
+
+Metrics:
+
+* accuracy / perplexity
+* bit allocation efficiency
+* calibration cost
+* stability of sensitivity estimates
+
+Key questions:
+
+* does sensitivity correlate with real quantization error?
+* does BSQ improve accuracy/bit trade-off?
+* how stable is the allocation?
+
+---
+
+## 7. Theoretical Insight
+
+First-order bound:
+
+output error ≤ Σₖ ||Jk(x)|| · εk
+
+So sensitivity acts as a proxy for worst-case local distortion.
+
+Note: this is a local approximation, not a global guarantee.
+
+---
+
+## 8. Limitations
+
+* first-order approximation only
+* sensitive to nonlinear regimes
+* assumes per-layer abstraction is sufficient
+* no hardware-aware kernel optimization included
+
+---
+
+## 9. Conclusion
+
+BSQ reframes quantization as function-space allocation:
+not “which weights matter”, but “which behaviors are fragile”.
+
+It provides a lightweight, post-training way to assign precision based on measured behavioral sensitivity.
+
+Mixed-Precision Quantization via Adaptive Allocation
 
 ## Abstract
 
@@ -222,6 +432,4 @@ BSQ is still a first-order method. Its quality depends on how well local lineari
 ## 9. Conclusion
 
 Behavioral Sensitivity Quantization reframes mixed-precision compression as a function-aware allocation problem. By measuring how much output behavior changes under small unit-wise perturbations, BSQ assigns precision where it matters most and compresses robust units more aggressively. The resulting method is post-training, calibration-light, and compatible with existing quantization pipelines. Its main value is not that it replaces all prior quantization work, but that it provides a cleaner bridge between model behavior and compression decisions.
-
----
 
