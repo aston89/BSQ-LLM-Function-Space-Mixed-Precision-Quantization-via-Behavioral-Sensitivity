@@ -1,215 +1,4 @@
-# Behavioral Sensitivity Quantization (BSQ)
-### Function-Aware Mixed-Precision Quantization via Adaptive Allocation
-
----
-
-## Abstract
-
-Neural network quantization is often driven by parameter-space heuristics that treat magnitude or curvature as proxies for functional importance. In overparameterized models, parameter fidelity does not necessarily imply behavioral fidelity.
-
-We propose **Behavioral Sensitivity Quantization (BSQ)**, a post-training mixed-precision framework that allocates bit-widths based on empirical sensitivity measured in function space.
-
-BSQ estimates layer fragility by measuring output deviation under small parameter perturbations using Jacobian-vector products (JVPs) and stochastic trace estimation on a small calibration set.
-
-We then solve a constrained bit allocation problem:
-
-minimize expected functional distortion
-subject to total memory budget constraint.
-
-The method is lightweight, post-training, and compatible with standard quantization pipelines.
-
----
-
-## 1. Introduction
-
-Quantization typically relies on weight magnitude, activation scale, or curvature as proxies for importance. However, in overparameterized networks, these proxies are imperfect indicators of **behavioral sensitivity**.
-
-BSQ instead asks:
-
-> how much does the output change if a specific part of the model is slightly perturbed?
-
-We assign more bits to fragile components and fewer bits to robust ones.
-
----
-
-## 2. Problem Formulation
-
-Let a model be $f_θ(x)$, with parameters split into K units:
-
-θ = {θ₁, …, θK} where each θk has Nk parameters.
-
-We assign bit-width bk per unit.
-
-### Objective:
-
-We minimize:
-
-Expected distortion:
-Eₓ [ d(fθ(x), fθQ(x)) ]
-
-### Constraint:
-
-Total memory:
-
-Σₖ Nk · bk ≤ B_total
-
-bk ∈ {b_min, …, b_max}
-
----
-
-## 3. Behavioral Sensitivity
-
-### 3.1 Definition
-
-Sensitivity of unit k:
-
-Sk = Eₓ,δ [ || fθ(x) − fθ+Δk(δ)(x) ||² ]
-
-Interpretation:
-
-* high Sk → fragile unit → needs more bits
-* low Sk → robust unit → can be heavily quantized
-
----
-
-### 3.2 First-order approximation
-
-Linearizing:
-
-f(θ + δ) ≈ f(θ) + Jk(x) δ
-
-So:
-
-Sk ≈ Eₓ [ || Jk(x) δk ||² ]
-
-If δk is isotropic noise:
-
-Sk ∝ Eₓ [ || Jk(x) ||²_F ]
-
----
-
-### 3.3 Hutchinson estimator
-
-We approximate Frobenius norm via:
-
-||Jk||²_F ≈ (1/M) Σₘ || Jk(x) v_m ||²
-
-where v_m ∈ {+1, -1} (Rademacher vectors)
-
-Final estimator:
-
-Ŝk = average over calibration samples and probes.
-
----
-
-## 4. Bit Allocation
-
-### 4.1 Surrogate objective
-
-We model distortion:
-
-Dk(bk) ≈ Sk · 2^(-2 bk)
-
-Total objective:
-
-min Σₖ Sk · 2^(-2 bk)
-
-subject to:
-
-Σₖ Nk · bk ≤ B_total
-
----
-
-### 4.2 Solution (continuous relaxation)
-
-Optimal allocation:
-
-bk* ∝ 0.5 · log2(Sk / Nk)
-
-Interpretation:
-
-* more sensitive per parameter → more bits
-* larger layers are penalized
-
----
-
-### 4.3 Practical discrete assignment
-
-1. compute rk = log(Sk / Nk + ε)
-2. normalize rk
-3. map to {2, 3, 4, 8} bits
-4. adjust greedily to satisfy memory budget
-
----
-
-## 5. Related Work
-
-Existing PTQ methods rely on:
-
-* weight magnitude (heuristic)
-* activation scale
-* Hessian curvature (expensive)
-
-BSQ differs by:
-
-* operating in function space
-* using Jacobian-based sensitivity
-* requiring no fine-tuning
-* using small calibration sets only
-
----
-
-## 6. Proposed Evaluation Protocol
-
-To validate BSQ, we propose:
-
-* Vision: ResNet, ViT
-* Language: LLaMA-style decoder models
-
-Metrics:
-
-* accuracy / perplexity
-* bit allocation efficiency
-* calibration cost
-* stability of sensitivity estimates
-
-Key questions:
-
-* does sensitivity correlate with real quantization error?
-* does BSQ improve accuracy/bit trade-off?
-* how stable is the allocation?
-
----
-
-## 7. Theoretical Insight
-
-First-order bound:
-
-output error ≤ Σₖ ||Jk(x)|| · εk
-
-So sensitivity acts as a proxy for worst-case local distortion.
-
-Note: this is a local approximation, not a global guarantee.
-
----
-
-## 8. Limitations
-
-* first-order approximation only
-* sensitive to nonlinear regimes
-* assumes per-layer abstraction is sufficient
-* no hardware-aware kernel optimization included
-
----
-
-## 9. Conclusion
-
-BSQ reframes quantization as function-space allocation:
-not “which weights matter”, but “which behaviors are fragile”.
-
-It provides a lightweight, post-training way to assign precision based on measured behavioral sensitivity.
-
-Mixed-Precision Quantization via Adaptive Allocation
+# Behavioral Sensitivity Quantization (BSQ): Function-Aware Mixed-Precision Quantization via Adaptive Allocation
 
 ## Abstract
 
@@ -233,21 +22,21 @@ The result is a post-training quantization method that is conceptually simple, m
 
 ## 2. Problem Formulation
 
-Let (f_\theta : \mathcal{X} \rightarrow \mathcal{Y}) be a pretrained model with parameters (\theta), partitioned into (K) structural units:
-[
-\theta = {\theta_1, \dots, \theta_K}, \qquad \theta_k \in \mathbb{R}^{N_k}.
-]
+Let $f_\theta : \mathcal{X} \rightarrow \mathcal{Y}$ be a pretrained model with parameters $\theta$, partitioned into $K$ structural units:
+\[
+\theta = \{\theta_1, \dots, \theta_K\}, \qquad \theta_k \in \mathbb{R}^{N_k}.
+\]
 
-We seek a quantized model (f_{\theta_Q}) in which each unit (k) is assigned a bit-width (b_k \in {b_{\min}, \dots, b_{\max}}). The goal is to minimize behavioral distortion under a total bit budget:
-[
-\min_{{b_k}} ;; \mathbb{E}*{x \sim \mathcal{D}} \left[ d!\left(f*\theta(x), f_{\theta_Q}(x)\right) \right]
-]
+We seek a quantized model $f_{\theta_Q}$ in which each unit $k$ is assigned a bit-width $b_k \in \{b_{\min}, \dots, b_{\max}\}$. The goal is to minimize behavioral distortion under a total bit budget:
+\[
+\min_{{b_k}} \quad \mathbb{E}_{x \sim \mathcal{D}} \left[ d\left(f_\theta(x), f_{\theta_Q}(x)\right) \right]
+\]
 subject to
-[
-\sum_{k=1}^{K} N_k, b_k \le B_{\text{total}}.
-]
+\[
+\sum_{k=1}^{K} N_k b_k \le B_{\text{total}}.
+\]
 
-Here (d(\cdot,\cdot)) is a task-appropriate divergence, such as squared error for regression or KL divergence for classification. The memory constraint includes the number of parameters per unit, which is essential because bit-width choices are not cost-equivalent across layers of different sizes.
+Here $d(\cdot,\cdot)$ is a task-appropriate divergence, such as squared error for regression or KL divergence for classification. The memory constraint includes the number of parameters per unit, which is essential because bit-width choices are not cost-equivalent across layers of different sizes.
 
 ---
 
@@ -255,48 +44,43 @@ Here (d(\cdot,\cdot)) is a task-appropriate divergence, such as squared error fo
 
 ### 3.1 Definition
 
-We define the behavioral sensitivity of unit (k) as the expected output deviation induced by a small perturbation to that unit:
-[
-S_k = \mathbb{E}*{x \sim \mathcal{D},, \delta_k} \left[\left| f*\theta(x) - f_{\theta + \Delta_k(\delta_k)}(x) \right|_2^2 \right],
-]
-where (\Delta_k(\delta_k)) applies the perturbation only to (\theta_k).
+We define the behavioral sensitivity of unit $k$ as the expected output deviation induced by a small perturbation to that unit:
+\[
+S_k = \mathbb{E}_{x \sim \mathcal{D}, \delta_k} \left[\left\| f_\theta(x) - f_{\theta + \Delta_k(\delta_k)}(x) \right\|_2^2 \right],
+\]
+where $\Delta_k(\delta_k)$ applies the perturbation only to $\theta_k$.
 
-Intuitively, a unit with large (S_k) is functionally fragile and should be quantized more conservatively.
+Intuitively, a unit with large $S_k$ is functionally fragile and should be quantized more conservatively.
 
 ### 3.2 First-Order Approximation
 
-For small perturbations, we linearize the model around (\theta):
-[
-f_{\theta + \Delta_k(\delta_k)}(x) \approx f_\theta(x) + J_k(x),\delta_k,
-]
-where (J_k(x) = \frac{\partial f_\theta(x)}{\partial \theta_k}) is the Jacobian with respect to unit (k).
+For small perturbations, we linearize the model around $\theta$:
+\[
+f_{\theta + \Delta_k(\delta_k)}(x) \approx f_\theta(x) + J_k(x) \delta_k,
+\]
+where $J_k(x) = \frac{\partial f_\theta(x)}{\partial \theta_k}$ is the Jacobian with respect to unit $k$.
 
 This gives the approximation
-[
-S_k \approx \mathbb{E}_{x,\delta_k} \left[|J_k(x)\delta_k|_2^2\right].
-]
+\[
+S_k \approx \mathbb{E}_{x,\delta_k} \left[\|J_k(x) \delta_k\|_2^2\right].
+\]
 
-If (\delta_k) is isotropic with zero mean and covariance (\sigma^2 I), then
-[
-S_k \propto \mathbb{E}_x \left[|J_k(x)|_F^2\right].
-]
+If $\delta_k$ is isotropic with zero mean and covariance $\sigma^2 I$, then
+\[
+S_k \propto \mathbb{E}_x \left[\|J_k(x)\|_F^2\right].
+\]
 
 ### 3.3 Stochastic Estimation
 
-We estimate this quantity using Hutchinson-style probing. For random vectors (v_m) with zero mean and unit covariance,
-[
-|J_k(x)|_F^2
-============
-
-\operatorname{tr}!\left(J_k(x)^\top J_k(x)\right)
-\approx
-\frac{1}{M}\sum_{m=1}^{M} |J_k(x)v_m|_2^2.
-]
+We estimate this quantity using Hutchinson-style probing. For random vectors $v_m$ with zero mean and unit covariance,
+\[
+\|J_k(x)\|_F^2 = \operatorname{tr}\left(J_k(x)^\top J_k(x)\right) \approx \frac{1}{M}\sum_{m=1}^{M} \|J_k(x)v_m\|_2^2.
+\]
 
 This provides a scalable estimate of sensitivity without materializing the full Jacobian. In practice, the estimator is computed on a small calibration set and averaged across samples:
-[
-\widehat{S}*k = \frac{1}{|\mathcal{D}*{\text{calib}}|} \sum_{x \in \mathcal{D}*{\text{calib}}} \frac{1}{M}\sum*{m=1}^{M} |J_k(x)v_m|_2^2.
-]
+\[
+\widehat{S}_k = \frac{1}{|\mathcal{D}_{\text{calib}}|} \sum_{x \in \mathcal{D}_{\text{calib}}} \frac{1}{M}\sum_{m=1}^{M} \|J_k(x)v_m\|_2^2.
+\]
 
 This makes the estimator cheap enough for large models while remaining tied directly to output stability.
 
@@ -306,55 +90,45 @@ This makes the estimator cheap enough for large models while remaining tied dire
 
 ### 4.1 Surrogate Optimization
 
-We model the distortion induced by quantizing unit (k) at bit-width (b_k) as
-[
-D_k(b_k) \approx C_k, 2^{-2b_k},
-]
-where (C_k) is a unit-specific constant proportional to (\widehat{S}_k).
+We model the distortion induced by quantizing unit $k$ at bit-width $b_k$ as
+\[
+D_k(b_k) \approx C_k 2^{-2b_k},
+\]
+where $C_k$ is a unit-specific constant proportional to $\widehat{S}_k$.
 
 This yields the approximate optimization problem
-[
-\min_{{b_k}} \sum_{k=1}^{K} \widehat{S}*k, 2^{-2b_k}
-\quad \text{s.t.} \quad
-\sum*{k=1}^{K} N_k b_k \le B_{\text{total}}.
-]
+\[
+\min_{{b_k}} \sum_{k=1}^{K} \widehat{S}_k 2^{-2b_k} \quad \text{s.t.} \quad \sum_{k=1}^{K} N_k b_k \le B_{\text{total}}.
+\]
 
 This is not an exact rate-distortion theorem for neural quantization; it is a first-order surrogate motivated by classical uniform quantization behavior and the local linearization above.
 
 ### 4.2 Closed-Form Relaxation
 
 Ignoring integrality for the moment, the Lagrangian is
-[
-\mathcal{L}
-===========
+\[
+\mathcal{L} = \sum_{k=1}^{K} \widehat{S}_k 2^{-2b_k} + \lambda\left(\sum_{k=1}^{K} N_k b_k - B_{\text{total}}\right).
+\]
 
-\sum_{k=1}^{K} \widehat{S}*k,2^{-2b_k}
-+
-\lambda\left(\sum*{k=1}^{K}N_k b_k - B_{\text{total}}\right).
-]
-
-Setting (\partial \mathcal{L}/\partial b_k = 0) gives
-[
--2\ln(2),\widehat{S}_k,2^{-2b_k} + \lambda N_k = 0,
-]
+Setting $\partial \mathcal{L}/\partial b_k = 0$ gives
+\[
+-2\ln(2) \widehat{S}_k 2^{-2b_k} + \lambda N_k = 0,
+\]
 hence
-[
-b_k^*
-=====
+\[
+b_k^* = \frac{1}{2} \log_2 \left( \frac{2\ln(2) \widehat{S}_k}{\lambda N_k} \right).
+\]
 
-\frac{1}{2}\log_2!\left(\frac{2\ln(2),\widehat{S}_k}{\lambda N_k}\right).
-]
-
-So the optimal relaxed allocation is monotone in (\widehat{S}_k/N_k): units with larger sensitivity per parameter receive more bits.
+So the optimal relaxed allocation is monotone in $\widehat{S}_k/N_k$: units with larger sensitivity per parameter receive more bits.
 
 ### 4.3 Discrete Allocation
 
-Since hardware supports only discrete precisions, we project the relaxed solution onto the available set, e.g. ({2,3,4,8}) bits. A practical procedure is:
+Since hardware supports only discrete precisions, we project the relaxed solution onto the available set, e.g. $\{2,3,4,8\}$ bits. A practical procedure is:
 
-1. Compute scores (r_k = \log(\widehat{S}_k/N_k + \varepsilon)).
-2. Normalize (r_k) across units.
+1. Compute scores $r_k = \log(\widehat{S}_k/N_k + \varepsilon)$.
+2. Normalize $r_k$ across units.
 3. Map to the allowed bit set using monotone binning.
-4. Adjust greedily until (\sum_k N_k b_k \le B_{\text{total}}).
+4. Adjust greedily until $\sum_k N_k b_k \le B_{\text{total}}$.
 
 This retains the ranking induced by sensitivity while satisfying the exact memory constraint.
 
@@ -396,28 +170,24 @@ All reported numbers should be accompanied by the exact model checkpoint, tokeni
 ### 7.1 Local Distortion Bound
 
 Under the first-order approximation,
-[
-|f_\theta(x)-f_{\theta_Q}(x)|*2
-\approx
-\left| \sum*{k=1}^{K} J_k(x),\delta_k \right|_2.
-]
+\[
+\|f_\theta(x) - f_{\theta_Q}(x)\|_2 \approx \left\| \sum_{k=1}^{K} J_k(x) \delta_k \right\|_2.
+\]
 
-If each unit’s quantization error is bounded by (|\delta_k|*2 \le \epsilon_k), then
-[
-|f*\theta(x)-f_{\theta_Q}(x)|*2
-\le
-\sum*{k=1}^{K} |J_k(x)|_2,\epsilon_k,
-]
-and, after expectation over (x), sensitivity acts as a proxy for local functional fragility.
+If each unit’s quantization error is bounded by $\|\delta_k\|_2 \le \epsilon_k$, then
+\[
+\|f_\theta(x) - f_{\theta_Q}(x)\|_2 \le \sum_{k=1}^{K} \|J_k(x)\|_2 \epsilon_k,
+\]
+and, after expectation over $x$, sensitivity acts as a proxy for local functional fragility.
 
 This does not constitute a global guarantee for arbitrary nonlinear networks; it is a local bound that justifies sensitivity-based allocation as a principled heuristic.
 
 ### 7.2 Complexity
 
-Let (M) be the number of probe vectors and (|\mathcal{D}*{\text{calib}}|) the calibration set size. Sensitivity estimation scales approximately linearly in both:
-[
-\mathcal{O}!\left(M \cdot |\mathcal{D}*{\text{calib}}| \cdot \text{cost of a forward-mode probe}\right).
-]
+Let $M$ be the number of probe vectors and $|\mathcal{D}_{\text{calib}}|$ the calibration set size. Sensitivity estimation scales approximately linearly in both:
+\[
+\mathcal{O}\left( M \cdot |\mathcal{D}_{\text{calib}}| \cdot \text{cost of a forward-mode probe} \right).
+\]
 
 This is substantially cheaper than full fine-tuning and typically lighter than exact second-order methods on large models.
 
@@ -432,4 +202,3 @@ BSQ is still a first-order method. Its quality depends on how well local lineari
 ## 9. Conclusion
 
 Behavioral Sensitivity Quantization reframes mixed-precision compression as a function-aware allocation problem. By measuring how much output behavior changes under small unit-wise perturbations, BSQ assigns precision where it matters most and compresses robust units more aggressively. The resulting method is post-training, calibration-light, and compatible with existing quantization pipelines. Its main value is not that it replaces all prior quantization work, but that it provides a cleaner bridge between model behavior and compression decisions.
-
